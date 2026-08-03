@@ -38,9 +38,11 @@ This downloads a prebuilt binary for your platform, installs it to `/usr/local/b
 | Linux | `amd64` (x86_64), `arm64` (aarch64) | Ubuntu, Debian, Fedora, Arch, Alpine, … |
 
 Linux builds are statically linked with `CGO_ENABLED=0`, so they carry no glibc
-or musl dependency and run on any distribution. `git` 2.20+ is the only runtime
-requirement. If no prebuilt binary matches your platform, the script falls back
-to building from source, which needs [Go](https://golang.org/dl/) installed.
+or musl dependency and run on any distribution, Alpine included. The installer
+itself needs `bash`, `git` 2.20+, and `curl` or `wget` — on a minimal image such
+as Alpine, `apk add bash git curl` first, or use the manual download below. If no
+prebuilt binary matches your platform, the script falls back to building from
+source, which needs [Go](https://golang.org/dl/) installed.
 
 #### Install options
 
