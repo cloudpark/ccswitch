@@ -122,10 +122,10 @@ func TestRunPostCreate_StdinNotInherited(t *testing.T) {
 	}
 }
 
-func TestRunPostRemove_RunsInOrder(t *testing.T) {
+func TestRunPostCleanup_RunsInOrder(t *testing.T) {
 	worktreePath := t.TempDir()
 
-	outcome := RunPostRemove([]string{"touch one", "touch two"}, worktreePath, Env{})
+	outcome := RunPostCleanup([]string{"touch one", "touch two"}, worktreePath, Env{})
 
 	if outcome.Failed() {
 		t.Fatalf("did not expect failure, got: %v", outcome.Err)
@@ -141,10 +141,10 @@ func TestRunPostRemove_RunsInOrder(t *testing.T) {
 	}
 }
 
-func TestRunPostRemove_StopsOnFailure(t *testing.T) {
+func TestRunPostCleanup_StopsOnFailure(t *testing.T) {
 	worktreePath := t.TempDir()
 
-	outcome := RunPostRemove([]string{"touch one", "exit 1", "touch two"}, worktreePath, Env{})
+	outcome := RunPostCleanup([]string{"touch one", "exit 1", "touch two"}, worktreePath, Env{})
 
 	if !outcome.Failed() {
 		t.Fatal("expected Failed() to be true")
@@ -161,7 +161,7 @@ func TestRunPostRemove_StopsOnFailure(t *testing.T) {
 	}
 }
 
-func TestRunPostRemove_EnvVarsInjected(t *testing.T) {
+func TestRunPostCleanup_EnvVarsInjected(t *testing.T) {
 	worktreePath := t.TempDir()
 
 	env := Env{
@@ -172,7 +172,7 @@ func TestRunPostRemove_EnvVarsInjected(t *testing.T) {
 		RepoPath:     "/repo/path",
 	}
 
-	outcome := RunPostRemove([]string{
+	outcome := RunPostCleanup([]string{
 		`printf '%s' "$CCSWITCH_WORKTREE_PATH|$CCSWITCH_BRANCH_NAME|$CCSWITCH_SESSION_NAME|$CCSWITCH_REPO_NAME|$CCSWITCH_REPO_PATH" > env.txt`,
 	}, worktreePath, env)
 

@@ -111,9 +111,9 @@ ccswitch cleanup --all
 # ✓ Switched to main branch
 ```
 
-### Post-Create/Post-Remove Hooks & Shared Paths (env setup, DB seeding, cleanup, etc.)
+### Post-Create/Post-Cleanup Hooks & Shared Paths (env setup, DB seeding, cleanup, etc.)
 
-Share setup with your team so every new worktree is ready to develop in immediately - set env vars, install deps, clone/seed a dev database, and symlink slow-to-regenerate shared state like a virtualenv or `node_modules`. Use `post_remove` to tear down whatever `post_create` set up when the worktree is later cleaned up.
+Share setup with your team so every new worktree is ready to develop in immediately - set env vars, install deps, clone/seed a dev database, and symlink slow-to-regenerate shared state like a virtualenv or `node_modules`. Use `post_cleanup` to tear down whatever `post_create` set up when the worktree is later cleaned up.
 
 ```bash
 # Scaffold a starter .ccswitch.yaml at the repo root
@@ -136,7 +136,7 @@ post_create:
     - npm install
     - ./scripts/seed-db.sh
 
-post_remove:
+post_cleanup:
   commands:
     - ./scripts/drop-db.sh
 ```
@@ -145,10 +145,10 @@ post_remove:
 - Missing shared sources (e.g. a `.venv` you haven't created yet) are silently skipped. Existing paths in the new worktree are never overwritten.
 - `link_shared` entries must be relative paths inside the repo; absolute paths or `..` entries are rejected.
 - `post_create` commands run in order via `sh -c`, with `cwd` set to the **new worktree**, right after `ccswitch create`/`ccswitch checkout` creates it.
-- `post_remove` commands run in order via `sh -c`, with `cwd` set to the worktree being removed, right before `ccswitch cleanup` removes it - the worktree still exists while they run.
-- The first time (or whenever the file's contents change), ccswitch prints the pending commands/paths and asks you to confirm before running/linking - approval is remembered per-repo and covers `post_create`, `post_remove`, and `link_shared` together. Manage this with `ccswitch config repo trust` / `ccswitch config repo untrust`.
+- `post_cleanup` commands run in order via `sh -c`, with `cwd` set to the worktree being removed, right before `ccswitch cleanup` removes it - the worktree still exists while they run.
+- The first time (or whenever the file's contents change), ccswitch prints the pending commands/paths and asks you to confirm before running/linking - approval is remembered per-repo and covers `post_create`, `post_cleanup`, and `link_shared` together. Manage this with `ccswitch config repo trust` / `ccswitch config repo untrust`.
 - If a command fails, ccswitch prints a warning and skips the rest, but the session is still created/removed.
-- Available environment variables (`post_create`/`post_remove`): `CCSWITCH_WORKTREE_PATH`, `CCSWITCH_BRANCH_NAME`, `CCSWITCH_SESSION_NAME`, `CCSWITCH_REPO_NAME`, `CCSWITCH_REPO_PATH`.
+- Available environment variables (`post_create`/`post_cleanup`): `CCSWITCH_WORKTREE_PATH`, `CCSWITCH_BRANCH_NAME`, `CCSWITCH_SESSION_NAME`, `CCSWITCH_REPO_NAME`, `CCSWITCH_REPO_PATH`.
 
 ## 🛠️ Development
 

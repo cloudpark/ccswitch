@@ -1,5 +1,5 @@
 // Package hooks runs the shell commands configured by a repo's post-create
-// and post-remove config. It is intentionally free of any printing/UI
+// and post-cleanup config. It is intentionally free of any printing/UI
 // concerns - callers decide what to report based on the returned Outcome.
 package hooks
 
@@ -41,12 +41,12 @@ func RunPostCreate(commands []string, worktreePath string, env Env) Outcome {
 	return run(commands, worktreePath, env)
 }
 
-// RunPostRemove runs each command in commands sequentially, with identical
+// RunPostCleanup runs each command in commands sequentially, with identical
 // semantics to RunPostCreate (same cwd/env/stdin/stdout handling, same
 // stop-on-first-failure behavior). Callers are expected to invoke it BEFORE
 // removing worktreePath, so cleanup commands can still reference files
 // inside the worktree being torn down.
-func RunPostRemove(commands []string, worktreePath string, env Env) Outcome {
+func RunPostCleanup(commands []string, worktreePath string, env Env) Outcome {
 	return run(commands, worktreePath, env)
 }
 

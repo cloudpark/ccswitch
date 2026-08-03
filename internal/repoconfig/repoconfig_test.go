@@ -71,10 +71,10 @@ func TestLoadRepoConfig_EmptyCommandsList(t *testing.T) {
 	}
 }
 
-func TestLoadRepoConfig_PostRemove(t *testing.T) {
+func TestLoadRepoConfig_PostCleanup(t *testing.T) {
 	tempDir := t.TempDir()
 
-	content := "post_remove:\n  commands:\n    - echo cleanup one\n    - echo cleanup two\n"
+	content := "post_cleanup:\n  commands:\n    - echo cleanup one\n    - echo cleanup two\n"
 	if err := os.WriteFile(GetRepoConfigPath(tempDir), []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write test config: %v", err)
 	}
@@ -85,24 +85,24 @@ func TestLoadRepoConfig_PostRemove(t *testing.T) {
 	}
 
 	expected := []string{"echo cleanup one", "echo cleanup two"}
-	if len(cfg.PostRemove.Commands) != len(expected) {
-		t.Fatalf("expected %d commands, got %d", len(expected), len(cfg.PostRemove.Commands))
+	if len(cfg.PostCleanup.Commands) != len(expected) {
+		t.Fatalf("expected %d commands, got %d", len(expected), len(cfg.PostCleanup.Commands))
 	}
 	for i, c := range expected {
-		if cfg.PostRemove.Commands[i] != c {
-			t.Errorf("Commands[%d] = %q, expected %q", i, cfg.PostRemove.Commands[i], c)
+		if cfg.PostCleanup.Commands[i] != c {
+			t.Errorf("Commands[%d] = %q, expected %q", i, cfg.PostCleanup.Commands[i], c)
 		}
 	}
 }
 
-func TestLoadRepoConfig_EmptyPostRemove(t *testing.T) {
+func TestLoadRepoConfig_EmptyPostCleanup(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
 	}{
-		{"no post_remove section", ""},
-		{"empty post_remove section", "post_remove: {}\n"},
-		{"explicit empty commands list", "post_remove:\n  commands: []\n"},
+		{"no post_cleanup section", ""},
+		{"empty post_cleanup section", "post_cleanup: {}\n"},
+		{"explicit empty commands list", "post_cleanup:\n  commands: []\n"},
 	}
 
 	for _, tt := range tests {
@@ -116,8 +116,8 @@ func TestLoadRepoConfig_EmptyPostRemove(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadRepoConfig() failed: %v", err)
 			}
-			if len(cfg.PostRemove.Commands) != 0 {
-				t.Errorf("expected no commands, got %v", cfg.PostRemove.Commands)
+			if len(cfg.PostCleanup.Commands) != 0 {
+				t.Errorf("expected no commands, got %v", cfg.PostCleanup.Commands)
 			}
 		})
 	}
@@ -227,8 +227,8 @@ func TestScaffold_CreatesFile(t *testing.T) {
 	if len(cfg.LinkShared) != 0 {
 		t.Errorf("expected no link_shared entries from scaffolded template, got %v", cfg.LinkShared)
 	}
-	if len(cfg.PostRemove.Commands) != 0 {
-		t.Errorf("expected no post_remove commands from scaffolded template, got %v", cfg.PostRemove.Commands)
+	if len(cfg.PostCleanup.Commands) != 0 {
+		t.Errorf("expected no post_cleanup commands from scaffolded template, got %v", cfg.PostCleanup.Commands)
 	}
 }
 
@@ -263,7 +263,7 @@ func TestSave(t *testing.T) {
 
 	cfg := &RepoConfig{}
 	cfg.PostCreate.Commands = []string{"npm install", "./setup.sh"}
-	cfg.PostRemove.Commands = []string{"./teardown.sh"}
+	cfg.PostCleanup.Commands = []string{"./teardown.sh"}
 	cfg.LinkShared = []string{"venv", ".env"}
 
 	if err := cfg.Save(tempDir); err != nil {
@@ -282,8 +282,8 @@ func TestSave(t *testing.T) {
 		t.Errorf("loaded commands = %v, expected %v", loaded.PostCreate.Commands, cfg.PostCreate.Commands)
 	}
 
-	if len(loaded.PostRemove.Commands) != 1 || loaded.PostRemove.Commands[0] != "./teardown.sh" {
-		t.Errorf("loaded PostRemove.Commands = %v, expected %v", loaded.PostRemove.Commands, cfg.PostRemove.Commands)
+	if len(loaded.PostCleanup.Commands) != 1 || loaded.PostCleanup.Commands[0] != "./teardown.sh" {
+		t.Errorf("loaded PostCleanup.Commands = %v, expected %v", loaded.PostCleanup.Commands, cfg.PostCleanup.Commands)
 	}
 
 	if len(loaded.LinkShared) != 2 {

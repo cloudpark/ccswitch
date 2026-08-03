@@ -13,9 +13,9 @@ import (
 
 // RepoConfig represents the contents of .ccswitch.yaml.
 type RepoConfig struct {
-	PostCreate PostCreateConfig `yaml:"post_create"`
-	PostRemove PostRemoveConfig `yaml:"post_remove"`
-	LinkShared []string         `yaml:"link_shared"`
+	PostCreate  PostCreateConfig  `yaml:"post_create"`
+	PostCleanup PostCleanupConfig `yaml:"post_cleanup"`
+	LinkShared  []string          `yaml:"link_shared"`
 }
 
 // PostCreateConfig holds the commands run after a worktree is created.
@@ -23,8 +23,8 @@ type PostCreateConfig struct {
 	Commands []string `yaml:"commands"`
 }
 
-// PostRemoveConfig holds the commands run before a worktree is removed.
-type PostRemoveConfig struct {
+// PostCleanupConfig holds the commands run before a worktree is removed.
+type PostCleanupConfig struct {
 	Commands []string `yaml:"commands"`
 }
 
@@ -98,15 +98,15 @@ const defaultRepoConfigTemplate = `# ccswitch repo-level configuration.
 # "ccswitch create" or "ccswitch checkout <branch>" creates a new worktree.
 # Use this to set env vars, seed a database, install deps, etc.
 #
-# post_remove.commands run automatically, in order, right before
+# post_cleanup.commands run automatically, in order, right before
 # "ccswitch cleanup" removes a worktree. Use this to tear down whatever
 # post_create set up - e.g. drop a per-worktree dev database, stop a docker
 # container, deregister a dev subdomain.
 #
-# - Each entry (post_create or post_remove) is run as its own shell command
+# - Each entry (post_create or post_cleanup) is run as its own shell command
 #   via "sh -c".
 # - Commands run with cwd set to the worktree (not the main repo), so
-#   relative paths/scripts resolve against the worktree. For post_remove,
+#   relative paths/scripts resolve against the worktree. For post_cleanup,
 #   this is the worktree about to be removed - it still exists while the
 #   commands run, and is only removed afterward.
 # - Commands run with stdin closed (non-interactive) and stdout/stderr
@@ -133,13 +133,13 @@ const defaultRepoConfigTemplate = `# ccswitch repo-level configuration.
 # branch being checked out into (or removed from) the new worktree.
 #
 # The first time (or after this file changes) ccswitch runs post_create
-# commands, post_remove commands, or creates link_shared symlinks for you, it
+# commands, post_cleanup commands, or creates link_shared symlinks for you, it
 # will ask you to confirm. Run "ccswitch config repo trust" to approve
 # without being prompted, or "ccswitch config repo untrust" to revoke
 # approval. Trust is all-or-nothing per file: it covers post_create,
-# post_remove, and link_shared together.
+# post_cleanup, and link_shared together.
 #
-# Available environment variables inside each post_create/post_remove command:
+# Available environment variables inside each post_create/post_cleanup command:
 #   CCSWITCH_WORKTREE_PATH  - absolute path to the worktree
 #   CCSWITCH_BRANCH_NAME    - branch checked out in the worktree
 #   CCSWITCH_SESSION_NAME   - slugified session name
@@ -158,7 +158,7 @@ const defaultRepoConfigTemplate = `# ccswitch repo-level configuration.
 #     - npm install
 #     - ./scripts/seed-db.sh
 #
-# post_remove:
+# post_cleanup:
 #   commands:
 #     - ./scripts/drop-db.sh
 `

@@ -61,9 +61,9 @@ func writeAndTrustRepoConfig(t *testing.T, repoDir string, commands, linkShared 
 	writeAndTrustRepoConfigFull(t, repoDir, commands, nil, linkShared)
 }
 
-// writeAndTrustRepoConfigFull is writeAndTrustRepoConfig plus post_remove
-// commands, for tests that also exercise RemoveSession's post-remove hooks.
-func writeAndTrustRepoConfigFull(t *testing.T, repoDir string, postCreate, postRemove, linkShared []string) {
+// writeAndTrustRepoConfigFull is writeAndTrustRepoConfig plus post_cleanup
+// commands, for tests that also exercise RemoveSession's post-cleanup hooks.
+func writeAndTrustRepoConfigFull(t *testing.T, repoDir string, postCreate, postCleanup, linkShared []string) {
 	t.Helper()
 
 	mainRepoPath, err := git.GetMainRepoPath(repoDir)
@@ -73,7 +73,7 @@ func writeAndTrustRepoConfigFull(t *testing.T, repoDir string, postCreate, postR
 
 	cfg := &repoconfig.RepoConfig{}
 	cfg.PostCreate.Commands = postCreate
-	cfg.PostRemove.Commands = postRemove
+	cfg.PostCleanup.Commands = postCleanup
 	cfg.LinkShared = linkShared
 	if err := cfg.Save(mainRepoPath); err != nil {
 		t.Fatalf("failed to save repo config: %v", err)
@@ -241,7 +241,7 @@ func TestCreateSession_MissingSharedSource_IsNoOp(t *testing.T) {
 	}
 }
 
-func TestRemoveSession_RunsPostRemoveHooks(t *testing.T) {
+func TestRemoveSession_RunsPostCleanupHooks(t *testing.T) {
 	setupTempHome(t)
 	repoDir := setupTestRepo(t)
 	writeAndTrustRepoConfigFull(t, repoDir, nil, []string{`touch "$CCSWITCH_REPO_PATH/removed-marker.txt"`}, nil)
@@ -261,7 +261,7 @@ func TestRemoveSession_RunsPostRemoveHooks(t *testing.T) {
 		mainRepoPath = repoDir
 	}
 	if _, err := os.Stat(filepath.Join(mainRepoPath, "removed-marker.txt")); err != nil {
-		t.Errorf("expected post-remove hook to create removed-marker.txt: %v", err)
+		t.Errorf("expected post-cleanup hook to create removed-marker.txt: %v", err)
 	}
 	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
 		t.Error("expected worktree to be removed after RemoveSession()")
@@ -301,10 +301,10 @@ func TestRemoveSession_HookDirtiesWorktree_StillRemoves(t *testing.T) {
 
 	sessionPath := manager.GetSessionPath("dirty-feature")
 	if err := manager.RemoveSession(sessionPath, false, ""); err != nil {
-		t.Fatalf("RemoveSession() should still remove a worktree its own post-remove hook left dirty, got: %v", err)
+		t.Fatalf("RemoveSession() should still remove a worktree its own post-cleanup hook left dirty, got: %v", err)
 	}
 	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
-		t.Error("expected worktree to be removed even though its post-remove hook dirtied it")
+		t.Error("expected worktree to be removed even though its post-cleanup hook dirtied it")
 	}
 }
 
@@ -320,9 +320,9 @@ func TestRemoveSession_FailingHook_StillRemovesWorktree(t *testing.T) {
 
 	sessionPath := manager.GetSessionPath("doomed-feature")
 	if err := manager.RemoveSession(sessionPath, false, ""); err != nil {
-		t.Fatalf("RemoveSession() should not fail when a post-remove hook fails, got: %v", err)
+		t.Fatalf("RemoveSession() should not fail when a post-cleanup hook fails, got: %v", err)
 	}
 	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
-		t.Error("expected worktree to still be removed even though its post-remove hook failed")
+		t.Error("expected worktree to still be removed even though its post-cleanup hook failed")
 	}
 }
