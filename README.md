@@ -30,8 +30,8 @@ cd ccswitch
 make install
 
 # Add shell integration to your .bashrc or .zshrc
-cat bash.txt >> ~/.bashrc  # or ~/.zshrc
-source ~/.bashrc           # or ~/.zshrc
+echo 'eval "$(ccswitch shell-init)"' >> ~/.bashrc  # or ~/.zshrc
+source ~/.bashrc                                    # or ~/.zshrc
 ```
 
 ### Manual Installation
@@ -42,8 +42,9 @@ go build -o ccswitch .
 # Move to your PATH
 sudo mv ccswitch /usr/local/bin/
 
-# Add the shell wrapper
-source bash.txt
+# Add shell integration
+echo 'eval "$(ccswitch shell-init)"' >> ~/.bashrc  # or ~/.zshrc
+source ~/.bashrc                                    # or ~/.zshrc
 ```
 
 ## 🚀 Usage
@@ -52,10 +53,20 @@ source bash.txt
 ```bash
 ccswitch
 # 🚀 What are you working on? Fix authentication bug
-# ✓ Created session: feature/fix-authentication-bug
+# ✓ Created session: fix-authentication-bug
 #   Branch: feature/fix-authentication-bug
-#   Path: /home/user/project/../fix-authentication-bug
-# 
+#   Location: ~/.ccswitch/worktrees/my-project/fix-authentication-bug
+#
+# Automatically switches to the new directory!
+```
+
+### Check Out an Existing Branch
+```bash
+ccswitch checkout feature/existing-branch
+# ✓ Checked out session: existing-branch
+#   Branch: feature/existing-branch
+#   Location: ~/.ccswitch/worktrees/my-project/existing-branch
+#
 # Automatically switches to the new directory!
 ```
 
@@ -158,10 +169,11 @@ make coverage
 ### Project Structure
 ```
 ccswitch/
-├── main.go              # Main application code
-├── bash.txt             # Shell integration wrapper
+├── main.go              # Entry point
+├── cmd/                 # CLI commands (create, checkout, list, switch, cleanup, config, ...)
+├── internal/            # Core packages (session, git, config, repoconfig, trust, hooks, ui, utils)
 ├── Makefile            # Build automation
-├── *_test.go           # Test files
+├── *_test.go            # Test files (one per package)
 ├── Dockerfile.test     # Docker test environment
 └── README.md           # You are here! 👋
 ```
@@ -193,7 +205,7 @@ ccswitch/
 
 ## 🔧 Requirements
 
-- **Go** 1.21 or higher (for building)
+- **Go** 1.23.4 or higher (for building)
 - **Git** 2.20 or higher (for worktree support)
 - **Bash** or **Zsh** (for shell integration)
 
@@ -212,7 +224,7 @@ ccswitch/
 - Verify you have write permissions in the parent directory
 
 **Shell integration not working**
-- Make sure you've sourced the bash wrapper
+- Make sure you've added `eval "$(ccswitch shell-init)"` to your `~/.bashrc` or `~/.zshrc` and reloaded your shell (`source ~/.bashrc`/`source ~/.zshrc`)
 - Check that `ccswitch` is in your PATH
 - Try using the full path: `/usr/local/bin/ccswitch`
 

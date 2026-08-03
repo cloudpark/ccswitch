@@ -5,7 +5,7 @@ Thank you for your interest in contributing to ccswitch! This document provides 
 ## Getting Started
 
 ### Prerequisites
-- Go 1.21 or higher
+- Go 1.23.4 or higher
 - Git 2.20 or higher
 - Make (optional but recommended)
 
@@ -128,10 +128,7 @@ Feature requests are welcome! Please:
 
 ## Code Organization
 
-Currently, all code is in `main.go`. We're planning to modularize (see IMPROVEMENTS.md), but for now:
-- Keep functions focused and well-named
-- Add comments for complex logic
-- Maintain existing patterns and conventions
+Code is organized into `main.go` (entry point), `cmd/` (one file per CLI subcommand), and `internal/` (core packages: `session`, `git`, `config`, `repoconfig`, `trust`, `hooks`, `ui`, `utils`, `errors`). When adding a subcommand, follow the existing `cmd/*.go` pattern; when adding core logic, put it in a focused `internal/` package rather than a CLI file.
 
 ## Testing Guidelines
 
