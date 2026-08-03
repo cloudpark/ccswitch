@@ -1,11 +1,9 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/ksred/ccswitch/internal/config"
 	"github.com/ksred/ccswitch/internal/errors"
@@ -37,12 +35,10 @@ func createSession(cmd *cobra.Command, args []string) {
 	// Get description from user
 	fmt.Print(ui.TitleStyle.Render("🚀 What are you working on? "))
 
-	scanner := bufio.NewScanner(os.Stdin)
-	if !scanner.Scan() {
+	description, ok := utils.ReadStdinLine()
+	if !ok {
 		return
 	}
-
-	description := strings.TrimSpace(scanner.Text())
 	if description == "" {
 		ui.Error("✗ Description cannot be empty")
 		return
@@ -71,11 +67,11 @@ func createSession(cmd *cobra.Command, args []string) {
 	sessionName := utils.Slugify(description)
 	cfg, _ := config.Load()
 	branchName := cfg.Branch.Prefix + sessionName
-	repoName := filepath.Base(currentDir)
 
-	// Get the full worktree path
-	homeDir, _ := os.UserHomeDir()
-	worktreePath := filepath.Join(homeDir, ".ccswitch", "worktrees", repoName, sessionName)
+	// Use the manager's own path resolution (based on the main repo, not the
+	// cwd) so this is correct even when create is run from inside another worktree.
+	worktreePath := manager.GetSessionPath(sessionName)
+	repoName := filepath.Base(filepath.Dir(worktreePath))
 
 	ui.Successf("✓ Created session: %s", sessionName)
 	ui.Infof("Branch: %s", branchName)

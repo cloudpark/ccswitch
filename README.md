@@ -16,6 +16,7 @@ A friendly CLI tool for managing multiple git worktrees, perfect for juggling di
 - **🗑️ Bulk Cleanup** - Remove ALL worktrees at once with `cleanup --all` (perfect for spring cleaning!)
 - **🐚 Shell Integration** - Automatically `cd` into new worktrees (no copy-pasting paths!)
 - **🎨 Pretty Output** - Color-coded messages and clean formatting
+- **⚙️ Post-Create Hooks** - Run a repo-shared setup script automatically for every new worktree
 
 ## 📦 Installation
 
@@ -98,6 +99,32 @@ ccswitch cleanup --all
 # ✅ All 3 worktrees removed successfully!
 # ✓ Switched to main branch
 ```
+
+### Post-Create Hooks (env setup, DB seeding, etc.)
+
+Share a setup script with your team so every new worktree is ready to develop in immediately - set env vars, install deps, clone/seed a dev database, and so on.
+
+```bash
+# Scaffold a starter .ccswitch.yaml at the repo root
+ccswitch config repo init
+
+# Edit it to add your commands, then commit it so the whole team gets it
+ccswitch config repo show
+```
+
+`.ccswitch.yaml`:
+```yaml
+post_create:
+  commands:
+    - cp "$CCSWITCH_REPO_PATH/.env.example" .env
+    - npm install
+    - ./scripts/seed-db.sh
+```
+
+- Commands run in order via `sh -c`, with `cwd` set to the **new worktree**.
+- The first time (or whenever the file's contents change), ccswitch prints the commands and asks you to confirm before running them - approval is remembered per-repo. Manage this with `ccswitch config repo trust` / `ccswitch config repo untrust`.
+- If a command fails, ccswitch prints a warning and skips the rest, but the session is still created.
+- Available environment variables: `CCSWITCH_WORKTREE_PATH`, `CCSWITCH_BRANCH_NAME`, `CCSWITCH_SESSION_NAME`, `CCSWITCH_REPO_NAME`, `CCSWITCH_REPO_PATH`.
 
 ## 🛠️ Development
 

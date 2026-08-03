@@ -50,11 +50,11 @@ func checkoutSession(cmd *cobra.Command, args []string) {
 
 	// Success!
 	sessionName := utils.Slugify(branchName)
-	repoName := filepath.Base(currentDir)
 
-	// Get the full worktree path
-	homeDir, _ := os.UserHomeDir()
-	worktreePath := filepath.Join(homeDir, ".ccswitch", "worktrees", repoName, sessionName)
+	// Use the manager's own path resolution (based on the main repo, not the
+	// cwd) so this is correct even when checkout is run from inside another worktree.
+	worktreePath := manager.GetSessionPath(sessionName)
+	repoName := filepath.Base(filepath.Dir(worktreePath))
 
 	ui.Successf("✓ Checked out session: %s", sessionName)
 	ui.Infof("Branch: %s", branchName)

@@ -9,6 +9,10 @@ import (
 	"github.com/ksred/ccswitch/internal/config"
 	"github.com/ksred/ccswitch/internal/errors"
 	"github.com/ksred/ccswitch/internal/git"
+	"github.com/ksred/ccswitch/internal/hooks"
+	"github.com/ksred/ccswitch/internal/repoconfig"
+	"github.com/ksred/ccswitch/internal/trust"
+	"github.com/ksred/ccswitch/internal/ui"
 	"github.com/ksred/ccswitch/internal/utils"
 )
 
@@ -96,6 +100,11 @@ func (m *Manager) CreateSession(description string) error {
 		return err
 	}
 
+	// Post-create hooks run before returning: cmd/create.go prints the "cd"
+	// line for the shell wrapper only after this call succeeds, and the
+	// wrapper's "grep '^cd ' | tail -1" relies on the cd line being last.
+	m.runPostCreateHooks(mainRepoPath, worktreePath, branchName, sessionName)
+
 	return nil
 }
 
@@ -145,6 +154,9 @@ func (m *Manager) CheckoutSession(branchName string) error {
 		return err
 	}
 
+	// See the comment in CreateSession about hook/print ordering.
+	m.runPostCreateHooks(mainRepoPath, worktreePath, branchName, sessionName)
+
 	return nil
 }
 
@@ -182,4 +194,79 @@ func (m *Manager) RemoveSession(sessionPath string, deleteBranch bool, branchNam
 func (m *Manager) GetSessionPath(sessionName string) string {
 	homeDir, _ := os.UserHomeDir()
 	return filepath.Join(homeDir, ".ccswitch", "worktrees", m.repoName, sessionName)
+}
+
+// runPostCreateHooks loads the repo-level .ccswitch.yaml from mainRepoPath and
+// runs any configured post_create.commands in worktreePath. This is always
+// best-effort: a missing config file is a silent no-op, a malformed config file
+// or a failing command prints a warning, and neither ever causes the caller
+// (CreateSession/CheckoutSession) to return an error - the worktree/branch git
+// already created must remain intact either way.
+func (m *Manager) runPostCreateHooks(mainRepoPath, worktreePath, branchName, sessionName string) {
+	repoCfg, err := repoconfig.LoadRepoConfig(mainRepoPath)
+	if err != nil {
+		ui.Warningf("⚠ Failed to load %s, skipping post-create hooks: %v", repoconfig.GetRepoConfigPath(mainRepoPath), err)
+		return
+	}
+	if len(repoCfg.PostCreate.Commands) == 0 {
+		return
+	}
+
+	configPath := repoconfig.GetRepoConfigPath(mainRepoPath)
+	hash, err := trust.HashFile(configPath)
+	if err != nil {
+		ui.Warningf("⚠ Failed to read %s, skipping post-create hooks: %v", configPath, err)
+		return
+	}
+
+	store, err := trust.Load()
+	if err != nil {
+		ui.Warningf("⚠ Failed to load trust store, skipping post-create hooks: %v", err)
+		return
+	}
+
+	if !store.IsTrusted(configPath, hash) {
+		if !m.promptTrust(configPath, repoCfg.PostCreate.Commands) {
+			ui.Info("Skipped post-create commands (not trusted). Run 'ccswitch config repo trust' to approve them.")
+			return
+		}
+		store.Trust(configPath, hash)
+		if err := store.Save(); err != nil {
+			ui.Warningf("⚠ Failed to save trust decision: %v", err)
+		}
+	}
+
+	outcome := hooks.RunPostCreate(repoCfg.PostCreate.Commands, worktreePath, hooks.Env{
+		WorktreePath: worktreePath,
+		BranchName:   branchName,
+		SessionName:  sessionName,
+		RepoName:     m.repoName,
+		RepoPath:     mainRepoPath,
+	})
+	if outcome.Failed() {
+		ui.Warningf("⚠ post-create command failed, stopping remaining commands: %s", outcome.FailedCmd)
+		ui.Infof("  %v", outcome.Err)
+		ui.Infof("  Ran %d/%d configured post-create command(s).", outcome.Ran, outcome.Total)
+	}
+}
+
+// promptTrust asks the user to approve running the given commands, reading a
+// y/N answer from stdin via utils.ReadStdinLine (shared with any earlier
+// stdin prompt in this process, e.g. cmd/create.go's description prompt, so
+// input isn't lost to a competing buffered reader). It returns false
+// (declined) if stdin has no answer to read (e.g. closed/non-interactive
+// stdin).
+func (m *Manager) promptTrust(configPath string, commands []string) bool {
+	ui.Warningf("⚠ %s defines post-create commands that will run automatically:", configPath)
+	for _, c := range commands {
+		ui.Infof("  $ %s", c)
+	}
+	fmt.Print("Trust and run these commands? [y/N] ")
+
+	answer, ok := utils.ReadStdinLine()
+	if !ok {
+		return false
+	}
+	answer = strings.ToLower(answer)
+	return answer == "y" || answer == "yes"
 }
