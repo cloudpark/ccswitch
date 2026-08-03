@@ -16,7 +16,7 @@ A friendly CLI tool for managing multiple git worktrees, perfect for juggling di
 - **🗑️ Bulk Cleanup** - Remove ALL worktrees at once with `cleanup --all` (perfect for spring cleaning!)
 - **🐚 Shell Integration** - Automatically `cd` into new worktrees (no copy-pasting paths!)
 - **🎨 Pretty Output** - Color-coded messages and clean formatting
-- **⚙️ Post-Create Hooks** - Run a repo-shared setup script automatically for every new worktree
+- **⚙️ Post-Create Hooks & Shared Paths** - Run a repo-shared setup script and symlink shared env/deps automatically for every new worktree
 
 ## 📦 Installation
 
@@ -111,31 +111,39 @@ ccswitch cleanup --all
 # ✓ Switched to main branch
 ```
 
-### Post-Create Hooks (env setup, DB seeding, etc.)
+### Post-Create Hooks & Shared Paths (env setup, DB seeding, etc.)
 
-Share a setup script with your team so every new worktree is ready to develop in immediately - set env vars, install deps, clone/seed a dev database, and so on.
+Share setup with your team so every new worktree is ready to develop in immediately - set env vars, install deps, clone/seed a dev database, and symlink slow-to-regenerate shared state like a virtualenv or `node_modules`.
 
 ```bash
 # Scaffold a starter .ccswitch.yaml at the repo root
 ccswitch config repo init
 
-# Edit it to add your commands, then commit it so the whole team gets it
+# Edit it to add your commands/paths, then commit it so the whole team gets it
 ccswitch config repo show
 ```
 
 `.ccswitch.yaml`:
 ```yaml
+link_shared:
+  - .env
+  - venv
+  - .venv
+  - frontend/node_modules
+
 post_create:
   commands:
-    - cp "$CCSWITCH_REPO_PATH/.env.example" .env
     - npm install
     - ./scripts/seed-db.sh
 ```
 
-- Commands run in order via `sh -c`, with `cwd` set to the **new worktree**.
-- The first time (or whenever the file's contents change), ccswitch prints the commands and asks you to confirm before running them - approval is remembered per-repo. Manage this with `ccswitch config repo trust` / `ccswitch config repo untrust`.
+- `link_shared` entries are symlinked from the **main repo** into the same relative path in each **new worktree**, before any `post_create` commands run - so `npm install` becomes a fast no-op when `node_modules` is already linked, and scripts can read an already-linked `.env`.
+- Missing shared sources (e.g. a `.venv` you haven't created yet) are silently skipped. Existing paths in the new worktree are never overwritten.
+- `link_shared` entries must be relative paths inside the repo; absolute paths or `..` entries are rejected.
+- Post-create commands run in order via `sh -c`, with `cwd` set to the **new worktree**.
+- The first time (or whenever the file's contents change), ccswitch prints the commands and shared paths and asks you to confirm before running/linking - approval is remembered per-repo and covers both `post_create` and `link_shared` together. Manage this with `ccswitch config repo trust` / `ccswitch config repo untrust`.
 - If a command fails, ccswitch prints a warning and skips the rest, but the session is still created.
-- Available environment variables: `CCSWITCH_WORKTREE_PATH`, `CCSWITCH_BRANCH_NAME`, `CCSWITCH_SESSION_NAME`, `CCSWITCH_REPO_NAME`, `CCSWITCH_REPO_PATH`.
+- Available environment variables (post_create only): `CCSWITCH_WORKTREE_PATH`, `CCSWITCH_BRANCH_NAME`, `CCSWITCH_SESSION_NAME`, `CCSWITCH_REPO_NAME`, `CCSWITCH_REPO_PATH`.
 
 ## 🛠️ Development
 

@@ -10,6 +10,7 @@ import (
 	"github.com/ksred/ccswitch/internal/errors"
 	"github.com/ksred/ccswitch/internal/git"
 	"github.com/ksred/ccswitch/internal/hooks"
+	"github.com/ksred/ccswitch/internal/linkshared"
 	"github.com/ksred/ccswitch/internal/repoconfig"
 	"github.com/ksred/ccswitch/internal/trust"
 	"github.com/ksred/ccswitch/internal/ui"
@@ -100,10 +101,11 @@ func (m *Manager) CreateSession(description string) error {
 		return err
 	}
 
-	// Post-create hooks run before returning: cmd/create.go prints the "cd"
-	// line for the shell wrapper only after this call succeeds, and the
-	// wrapper's "grep '^cd ' | tail -1" relies on the cd line being last.
-	m.runPostCreateHooks(mainRepoPath, worktreePath, branchName, sessionName)
+	// Post-create hooks and shared-path linking run before returning:
+	// cmd/create.go prints the "cd" line for the shell wrapper only after
+	// this call succeeds, and the wrapper's "grep '^cd ' | tail -1" relies
+	// on the cd line being last.
+	m.runPostCreateAndLinkShared(mainRepoPath, worktreePath, branchName, sessionName)
 
 	return nil
 }
@@ -155,7 +157,7 @@ func (m *Manager) CheckoutSession(branchName string) error {
 	}
 
 	// See the comment in CreateSession about hook/print ordering.
-	m.runPostCreateHooks(mainRepoPath, worktreePath, branchName, sessionName)
+	m.runPostCreateAndLinkShared(mainRepoPath, worktreePath, branchName, sessionName)
 
 	return nil
 }
@@ -196,43 +198,57 @@ func (m *Manager) GetSessionPath(sessionName string) string {
 	return filepath.Join(homeDir, ".ccswitch", "worktrees", m.repoName, sessionName)
 }
 
-// runPostCreateHooks loads the repo-level .ccswitch.yaml from mainRepoPath and
-// runs any configured post_create.commands in worktreePath. This is always
-// best-effort: a missing config file is a silent no-op, a malformed config file
-// or a failing command prints a warning, and neither ever causes the caller
-// (CreateSession/CheckoutSession) to return an error - the worktree/branch git
-// already created must remain intact either way.
-func (m *Manager) runPostCreateHooks(mainRepoPath, worktreePath, branchName, sessionName string) {
+// runPostCreateAndLinkShared loads the repo-level .ccswitch.yaml from
+// mainRepoPath and, if trusted, symlinks any configured link_shared paths
+// into worktreePath before running any configured post_create.commands
+// there. Linking runs first so that post_create commands can see already
+// materialized shared state (e.g. a shared node_modules or .env). This is
+// always best-effort: a missing config file is a silent no-op, and a
+// malformed config file, a failing command, or a failed link only prints a
+// warning - none of these ever cause the caller (CreateSession/
+// CheckoutSession) to return an error; the worktree/branch git already
+// created must remain intact either way.
+func (m *Manager) runPostCreateAndLinkShared(mainRepoPath, worktreePath, branchName, sessionName string) {
 	repoCfg, err := repoconfig.LoadRepoConfig(mainRepoPath)
 	if err != nil {
-		ui.Warningf("⚠ Failed to load %s, skipping post-create hooks: %v", repoconfig.GetRepoConfigPath(mainRepoPath), err)
+		ui.Warningf("⚠ Failed to load %s, skipping post-create hooks and shared links: %v", repoconfig.GetRepoConfigPath(mainRepoPath), err)
 		return
 	}
-	if len(repoCfg.PostCreate.Commands) == 0 {
+	if len(repoCfg.PostCreate.Commands) == 0 && len(repoCfg.LinkShared) == 0 {
 		return
 	}
 
 	configPath := repoconfig.GetRepoConfigPath(mainRepoPath)
 	hash, err := trust.HashFile(configPath)
 	if err != nil {
-		ui.Warningf("⚠ Failed to read %s, skipping post-create hooks: %v", configPath, err)
+		ui.Warningf("⚠ Failed to read %s, skipping post-create hooks and shared links: %v", configPath, err)
 		return
 	}
 
 	store, err := trust.Load()
 	if err != nil {
-		ui.Warningf("⚠ Failed to load trust store, skipping post-create hooks: %v", err)
+		ui.Warningf("⚠ Failed to load trust store, skipping post-create hooks and shared links: %v", err)
 		return
 	}
 
 	if !store.IsTrusted(configPath, hash) {
-		if !m.promptTrust(configPath, repoCfg.PostCreate.Commands) {
-			ui.Info("Skipped post-create commands (not trusted). Run 'ccswitch config repo trust' to approve them.")
+		if !m.promptTrust(configPath, repoCfg.PostCreate.Commands, repoCfg.LinkShared) {
+			ui.Info("Skipped post-create commands and shared-path linking (not trusted). Run 'ccswitch config repo trust' to approve them.")
 			return
 		}
 		store.Trust(configPath, hash)
 		if err := store.Save(); err != nil {
 			ui.Warningf("⚠ Failed to save trust decision: %v", err)
+		}
+	}
+
+	if len(repoCfg.LinkShared) > 0 {
+		linkOutcome := linkshared.LinkShared(repoCfg.LinkShared, mainRepoPath, worktreePath)
+		if linkOutcome.Linked > 0 {
+			ui.Infof("🔗 Linked %d/%d shared path(s) into the new worktree.", linkOutcome.Linked, linkOutcome.Total)
+		}
+		for _, f := range linkOutcome.Errors {
+			ui.Warningf("⚠ Failed to link shared path %q: %v", f.Item, f.Err)
 		}
 	}
 
@@ -250,18 +266,29 @@ func (m *Manager) runPostCreateHooks(mainRepoPath, worktreePath, branchName, ses
 	}
 }
 
-// promptTrust asks the user to approve running the given commands, reading a
-// y/N answer from stdin via utils.ReadStdinLine (shared with any earlier
-// stdin prompt in this process, e.g. cmd/create.go's description prompt, so
-// input isn't lost to a competing buffered reader). It returns false
+// promptTrust asks the user to approve running the given commands and/or
+// creating the given shared-path symlinks, reading a y/N answer from stdin
+// via utils.ReadStdinLine (shared with any earlier stdin prompt in this
+// process, e.g. cmd/create.go's description prompt, so input isn't lost to
+// a competing buffered reader). Declining skips BOTH post_create.commands
+// and link_shared - trust is all-or-nothing per file. It returns false
 // (declined) if stdin has no answer to read (e.g. closed/non-interactive
 // stdin).
-func (m *Manager) promptTrust(configPath string, commands []string) bool {
-	ui.Warningf("⚠ %s defines post-create commands that will run automatically:", configPath)
-	for _, c := range commands {
-		ui.Infof("  $ %s", c)
+func (m *Manager) promptTrust(configPath string, commands, linkShared []string) bool {
+	ui.Warningf("⚠ %s defines actions that will run automatically:", configPath)
+	if len(commands) > 0 {
+		ui.Info("Commands to run:")
+		for _, c := range commands {
+			ui.Infof("  $ %s", c)
+		}
 	}
-	fmt.Print("Trust and run these commands? [y/N] ")
+	if len(linkShared) > 0 {
+		ui.Info("Paths to symlink from the main repo into the new worktree:")
+		for _, p := range linkShared {
+			ui.Infof("  %s", p)
+		}
+	}
+	fmt.Print("Trust and run/link these? [y/N] ")
 
 	answer, ok := utils.ReadStdinLine()
 	if !ok {

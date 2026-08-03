@@ -71,6 +71,57 @@ func TestLoadRepoConfig_EmptyCommandsList(t *testing.T) {
 	}
 }
 
+func TestLoadRepoConfig_LinkShared(t *testing.T) {
+	tempDir := t.TempDir()
+
+	content := "link_shared:\n  - .env\n  - venv\n"
+	if err := os.WriteFile(GetRepoConfigPath(tempDir), []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	cfg, err := LoadRepoConfig(tempDir)
+	if err != nil {
+		t.Fatalf("LoadRepoConfig() failed: %v", err)
+	}
+
+	expected := []string{".env", "venv"}
+	if len(cfg.LinkShared) != len(expected) {
+		t.Fatalf("expected %d link_shared entries, got %d", len(expected), len(cfg.LinkShared))
+	}
+	for i, p := range expected {
+		if cfg.LinkShared[i] != p {
+			t.Errorf("LinkShared[%d] = %q, expected %q", i, cfg.LinkShared[i], p)
+		}
+	}
+}
+
+func TestLoadRepoConfig_EmptyLinkShared(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{"no link_shared key", ""},
+		{"explicit empty link_shared list", "link_shared: []\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			if err := os.WriteFile(GetRepoConfigPath(tempDir), []byte(tt.content), 0644); err != nil {
+				t.Fatalf("failed to write test config: %v", err)
+			}
+
+			cfg, err := LoadRepoConfig(tempDir)
+			if err != nil {
+				t.Fatalf("LoadRepoConfig() failed: %v", err)
+			}
+			if len(cfg.LinkShared) != 0 {
+				t.Errorf("expected no link_shared entries, got %v", cfg.LinkShared)
+			}
+		})
+	}
+}
+
 func TestLoadRepoConfig_InvalidYAML(t *testing.T) {
 	tempDir := t.TempDir()
 
@@ -121,6 +172,9 @@ func TestScaffold_CreatesFile(t *testing.T) {
 	if len(cfg.PostCreate.Commands) != 0 {
 		t.Errorf("expected no commands from scaffolded template, got %v", cfg.PostCreate.Commands)
 	}
+	if len(cfg.LinkShared) != 0 {
+		t.Errorf("expected no link_shared entries from scaffolded template, got %v", cfg.LinkShared)
+	}
 }
 
 func TestScaffold_DoesNotOverwrite(t *testing.T) {
@@ -154,6 +208,7 @@ func TestSave(t *testing.T) {
 
 	cfg := &RepoConfig{}
 	cfg.PostCreate.Commands = []string{"npm install", "./setup.sh"}
+	cfg.LinkShared = []string{"venv", ".env"}
 
 	if err := cfg.Save(tempDir); err != nil {
 		t.Fatalf("Save() failed: %v", err)
@@ -169,5 +224,12 @@ func TestSave(t *testing.T) {
 	}
 	if loaded.PostCreate.Commands[0] != "npm install" || loaded.PostCreate.Commands[1] != "./setup.sh" {
 		t.Errorf("loaded commands = %v, expected %v", loaded.PostCreate.Commands, cfg.PostCreate.Commands)
+	}
+
+	if len(loaded.LinkShared) != 2 {
+		t.Fatalf("expected 2 link_shared entries, got %d", len(loaded.LinkShared))
+	}
+	if loaded.LinkShared[0] != "venv" || loaded.LinkShared[1] != ".env" {
+		t.Errorf("loaded LinkShared = %v, expected %v", loaded.LinkShared, cfg.LinkShared)
 	}
 }

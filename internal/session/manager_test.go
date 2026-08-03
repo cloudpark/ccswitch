@@ -49,13 +49,13 @@ func setupTempHome(t *testing.T) string {
 	return homeDir
 }
 
-// writeAndTrustRepoConfig writes .ccswitch.yaml with the given commands at
-// repoDir and pre-trusts it, so CreateSession/CheckoutSession run the hooks
-// without blocking on the interactive trust prompt during tests. It resolves
-// repoDir through git.GetMainRepoPath, the same way Manager does internally,
-// since on macOS a temp dir's canonical path (e.g. under /private) can differ
-// from t.TempDir()'s reported path.
-func writeAndTrustRepoConfig(t *testing.T, repoDir string, commands []string) {
+// writeAndTrustRepoConfig writes .ccswitch.yaml with the given commands and
+// link_shared paths at repoDir and pre-trusts it, so CreateSession/
+// CheckoutSession run the hooks without blocking on the interactive trust
+// prompt during tests. It resolves repoDir through git.GetMainRepoPath, the
+// same way Manager does internally, since on macOS a temp dir's canonical
+// path (e.g. under /private) can differ from t.TempDir()'s reported path.
+func writeAndTrustRepoConfig(t *testing.T, repoDir string, commands, linkShared []string) {
 	t.Helper()
 
 	mainRepoPath, err := git.GetMainRepoPath(repoDir)
@@ -65,6 +65,7 @@ func writeAndTrustRepoConfig(t *testing.T, repoDir string, commands []string) {
 
 	cfg := &repoconfig.RepoConfig{}
 	cfg.PostCreate.Commands = commands
+	cfg.LinkShared = linkShared
 	if err := cfg.Save(mainRepoPath); err != nil {
 		t.Fatalf("failed to save repo config: %v", err)
 	}
@@ -88,7 +89,7 @@ func writeAndTrustRepoConfig(t *testing.T, repoDir string, commands []string) {
 func TestCreateSession_RunsPostCreateHooks(t *testing.T) {
 	setupTempHome(t)
 	repoDir := setupTestRepo(t)
-	writeAndTrustRepoConfig(t, repoDir, []string{"touch marker.txt"})
+	writeAndTrustRepoConfig(t, repoDir, []string{"touch marker.txt"}, nil)
 
 	manager := NewManager(repoDir)
 	if err := manager.CreateSession("my feature"); err != nil {
@@ -119,7 +120,7 @@ func TestCreateSession_NoRepoConfig_IsNoOp(t *testing.T) {
 func TestCreateSession_FailingHook_DoesNotFailSession(t *testing.T) {
 	setupTempHome(t)
 	repoDir := setupTestRepo(t)
-	writeAndTrustRepoConfig(t, repoDir, []string{"exit 1"})
+	writeAndTrustRepoConfig(t, repoDir, []string{"exit 1"}, nil)
 
 	manager := NewManager(repoDir)
 	if err := manager.CreateSession("failing hook feature"); err != nil {
@@ -135,7 +136,7 @@ func TestCreateSession_FailingHook_DoesNotFailSession(t *testing.T) {
 func TestCheckoutSession_RunsPostCreateHooks(t *testing.T) {
 	setupTempHome(t)
 	repoDir := setupTestRepo(t)
-	writeAndTrustRepoConfig(t, repoDir, []string{"touch marker.txt"})
+	writeAndTrustRepoConfig(t, repoDir, []string{"touch marker.txt"}, nil)
 
 	cmd := exec.Command("git", "branch", "existing-branch")
 	cmd.Dir = repoDir
@@ -151,5 +152,82 @@ func TestCheckoutSession_RunsPostCreateHooks(t *testing.T) {
 	sessionPath := manager.GetSessionPath("existing-branch")
 	if _, err := os.Stat(filepath.Join(sessionPath, "marker.txt")); err != nil {
 		t.Errorf("expected post-create hook to create marker.txt in %s: %v", sessionPath, err)
+	}
+}
+
+func TestCreateSession_LinksSharedPaths(t *testing.T) {
+	setupTempHome(t)
+	repoDir := setupTestRepo(t)
+
+	mainRepoPath, err := git.GetMainRepoPath(repoDir)
+	if err != nil {
+		mainRepoPath = repoDir
+	}
+	envSource := filepath.Join(mainRepoPath, ".env")
+	if err := os.WriteFile(envSource, []byte("SECRET=abc"), 0644); err != nil {
+		t.Fatalf("failed to write .env in main repo: %v", err)
+	}
+
+	writeAndTrustRepoConfig(t, repoDir, nil, []string{".env"})
+
+	manager := NewManager(repoDir)
+	if err := manager.CreateSession("shared env feature"); err != nil {
+		t.Fatalf("CreateSession() failed: %v", err)
+	}
+
+	sessionPath := manager.GetSessionPath("shared-env-feature")
+	target := filepath.Join(sessionPath, ".env")
+	resolved, err := os.Readlink(target)
+	if err != nil {
+		t.Fatalf("expected .env to be a symlink in the new worktree: %v", err)
+	}
+	if resolved != envSource {
+		t.Errorf("expected .env symlink to point to %q, got %q", envSource, resolved)
+	}
+}
+
+func TestCreateSession_LinkSharedRunsBeforePostCreate(t *testing.T) {
+	setupTempHome(t)
+	repoDir := setupTestRepo(t)
+
+	mainRepoPath, err := git.GetMainRepoPath(repoDir)
+	if err != nil {
+		mainRepoPath = repoDir
+	}
+	envSource := filepath.Join(mainRepoPath, ".env")
+	if err := os.WriteFile(envSource, []byte("SECRET=abc"), 0644); err != nil {
+		t.Fatalf("failed to write .env in main repo: %v", err)
+	}
+
+	writeAndTrustRepoConfig(t, repoDir, []string{"cat .env > copied.txt"}, []string{".env"})
+
+	manager := NewManager(repoDir)
+	if err := manager.CreateSession("ordering feature"); err != nil {
+		t.Fatalf("CreateSession() failed: %v", err)
+	}
+
+	sessionPath := manager.GetSessionPath("ordering-feature")
+	data, err := os.ReadFile(filepath.Join(sessionPath, "copied.txt"))
+	if err != nil {
+		t.Fatalf("expected copied.txt to exist: %v", err)
+	}
+	if string(data) != "SECRET=abc" {
+		t.Errorf("expected copied.txt to contain the linked .env's contents, got %q (link_shared must run before post_create)", string(data))
+	}
+}
+
+func TestCreateSession_MissingSharedSource_IsNoOp(t *testing.T) {
+	setupTempHome(t)
+	repoDir := setupTestRepo(t)
+	writeAndTrustRepoConfig(t, repoDir, nil, []string{"nonexistent-file"})
+
+	manager := NewManager(repoDir)
+	if err := manager.CreateSession("missing shared feature"); err != nil {
+		t.Fatalf("CreateSession() should not fail when a link_shared source is missing, got: %v", err)
+	}
+
+	sessionPath := manager.GetSessionPath("missing-shared-feature")
+	if _, err := os.Stat(sessionPath); err != nil {
+		t.Fatalf("expected worktree to still exist at %s: %v", sessionPath, err)
 	}
 }

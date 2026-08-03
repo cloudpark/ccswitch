@@ -14,6 +14,7 @@ import (
 // RepoConfig represents the contents of .ccswitch.yaml.
 type RepoConfig struct {
 	PostCreate PostCreateConfig `yaml:"post_create"`
+	LinkShared []string         `yaml:"link_shared"`
 }
 
 // PostCreateConfig holds the commands run after a worktree is created.
@@ -99,19 +100,41 @@ const defaultRepoConfigTemplate = `# ccswitch repo-level configuration.
 # - If a command exits non-zero, ccswitch prints a warning and stops running
 #   the remaining commands -- it does NOT fail session creation; the worktree
 #   and branch that git already created are left intact.
-# - This file is always read from the MAIN repo's checkout, not from the
-#   branch being checked out into the new worktree.
-# - The first time (or after this file changes) ccswitch runs these commands
-#   for you, it will ask you to confirm. Run "ccswitch config repo trust" to
-#   approve without being prompted, or "ccswitch config repo untrust" to
-#   revoke approval.
 #
-# Available environment variables inside each command:
+# link_shared is a list of relative paths (files or directories) that should
+# be symlinked from the MAIN repo's checkout into every new worktree - e.g.
+# .env files, virtualenvs, or node_modules that are slow or unwanted to
+# regenerate per worktree.
+#
+# - Each entry is symlinked from the main repo into the same relative path
+#   in the new worktree. Missing source paths are silently skipped (e.g. a
+#   venv that hasn't been created yet). Existing target paths are never
+#   overwritten.
+# - link_shared runs BEFORE post_create.commands, so commands like
+#   "npm install" can see an already-linked node_modules or .env.
+# - Entries must be relative paths inside the repo (no absolute paths, no
+#   "..").
+#
+# This file is always read from the MAIN repo's checkout, not from the
+# branch being checked out into the new worktree.
+#
+# The first time (or after this file changes) ccswitch runs post_create
+# commands or creates link_shared symlinks for you, it will ask you to
+# confirm. Run "ccswitch config repo trust" to approve without being
+# prompted, or "ccswitch config repo untrust" to revoke approval.
+#
+# Available environment variables inside each post_create command:
 #   CCSWITCH_WORKTREE_PATH  - absolute path to the new worktree
 #   CCSWITCH_BRANCH_NAME    - branch checked out in the worktree
 #   CCSWITCH_SESSION_NAME   - slugified session name
 #   CCSWITCH_REPO_NAME      - name of the main repository
 #   CCSWITCH_REPO_PATH      - absolute path to the main repository
+#
+# link_shared:
+#   - .env
+#   - venv
+#   - .venv
+#   - frontend/node_modules
 #
 # post_create:
 #   commands:

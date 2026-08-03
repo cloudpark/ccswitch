@@ -157,12 +157,26 @@ func showRepoConfig(cmd *cobra.Command, args []string) {
 	ui.Title("⚙️  ccswitch Repo Configuration")
 	fmt.Println()
 
-	if len(cfg.PostCreate.Commands) == 0 {
-		ui.Info("No post-create commands configured.")
+	hasCommands := len(cfg.PostCreate.Commands) > 0
+	hasLinkShared := len(cfg.LinkShared) > 0
+
+	if !hasCommands && !hasLinkShared {
+		ui.Info("Nothing configured.")
 	} else {
-		ui.Success("Post-create commands:")
-		for i, c := range cfg.PostCreate.Commands {
-			ui.Infof("  %d. %s", i+1, c)
+		if hasCommands {
+			ui.Success("Post-create commands:")
+			for i, c := range cfg.PostCreate.Commands {
+				ui.Infof("  %d. %s", i+1, c)
+			}
+			fmt.Println()
+		}
+
+		if hasLinkShared {
+			ui.Success("Shared paths (symlinked from the main repo into each new worktree):")
+			for i, p := range cfg.LinkShared {
+				ui.Infof("  %d. %s", i+1, p)
+			}
+			fmt.Println()
 		}
 
 		configPath := repoconfig.GetRepoConfigPath(mainRepoPath)
@@ -172,7 +186,6 @@ func showRepoConfig(cmd *cobra.Command, args []string) {
 				trusted = store.IsTrusted(configPath, hash)
 			}
 		}
-		fmt.Println()
 		if trusted {
 			ui.Info("Trusted: yes")
 		} else {
@@ -217,7 +230,7 @@ func initRepoConfig(cmd *cobra.Command, args []string) {
 
 	ui.Successf("✓ Created repo config at: %s", path)
 	fmt.Println()
-	fmt.Println("Edit this file to add post-create commands, then commit it so your team shares the same setup.")
+	fmt.Println("Edit this file to add post-create commands or shared paths to link, then commit it so your team shares the same setup.")
 }
 
 func trustRepoConfig(cmd *cobra.Command, args []string) {
@@ -263,6 +276,13 @@ func trustRepoConfig(cmd *cobra.Command, args []string) {
 		ui.Info("These commands will now run without prompting:")
 		for i, c := range cfg.PostCreate.Commands {
 			ui.Infof("  %d. %s", i+1, c)
+		}
+	}
+	if len(cfg.LinkShared) > 0 {
+		fmt.Println()
+		ui.Info("These paths will now be symlinked without prompting:")
+		for i, p := range cfg.LinkShared {
+			ui.Infof("  %d. %s", i+1, p)
 		}
 	}
 }
