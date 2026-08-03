@@ -121,3 +121,74 @@ func TestRunPostCreate_StdinNotInherited(t *testing.T) {
 		t.Fatalf("did not expect failure, got: %v", outcome.Err)
 	}
 }
+
+func TestRunPostRemove_RunsInOrder(t *testing.T) {
+	worktreePath := t.TempDir()
+
+	outcome := RunPostRemove([]string{"touch one", "touch two"}, worktreePath, Env{})
+
+	if outcome.Failed() {
+		t.Fatalf("did not expect failure, got: %v", outcome.Err)
+	}
+	if outcome.Ran != 2 || outcome.Total != 2 {
+		t.Errorf("expected Total=2 Ran=2, got Total=%d Ran=%d", outcome.Total, outcome.Ran)
+	}
+
+	for _, name := range []string{"one", "two"} {
+		if _, err := os.Stat(filepath.Join(worktreePath, name)); err != nil {
+			t.Errorf("expected file %q to exist: %v", name, err)
+		}
+	}
+}
+
+func TestRunPostRemove_StopsOnFailure(t *testing.T) {
+	worktreePath := t.TempDir()
+
+	outcome := RunPostRemove([]string{"touch one", "exit 1", "touch two"}, worktreePath, Env{})
+
+	if !outcome.Failed() {
+		t.Fatal("expected Failed() to be true")
+	}
+	if outcome.FailedCmd != "exit 1" {
+		t.Errorf("expected FailedCmd = %q, got %q", "exit 1", outcome.FailedCmd)
+	}
+	if outcome.Ran != 2 {
+		t.Errorf("expected Ran=2 (stopped after the failing command), got %d", outcome.Ran)
+	}
+
+	if _, err := os.Stat(filepath.Join(worktreePath, "two")); !os.IsNotExist(err) {
+		t.Error("expected file \"two\" to NOT exist since remaining commands should be skipped")
+	}
+}
+
+func TestRunPostRemove_EnvVarsInjected(t *testing.T) {
+	worktreePath := t.TempDir()
+
+	env := Env{
+		WorktreePath: worktreePath,
+		BranchName:   "feature/my-branch",
+		SessionName:  "my-branch",
+		RepoName:     "myrepo",
+		RepoPath:     "/repo/path",
+	}
+
+	outcome := RunPostRemove([]string{
+		`printf '%s' "$CCSWITCH_WORKTREE_PATH|$CCSWITCH_BRANCH_NAME|$CCSWITCH_SESSION_NAME|$CCSWITCH_REPO_NAME|$CCSWITCH_REPO_PATH" > env.txt`,
+	}, worktreePath, env)
+
+	if outcome.Failed() {
+		t.Fatalf("did not expect failure, got: %v", outcome.Err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(worktreePath, "env.txt"))
+	if err != nil {
+		t.Fatalf("failed to read env.txt: %v", err)
+	}
+
+	expected := strings.Join([]string{
+		env.WorktreePath, env.BranchName, env.SessionName, env.RepoName, env.RepoPath,
+	}, "|")
+	if string(data) != expected {
+		t.Errorf("env.txt = %q, expected %q", string(data), expected)
+	}
+}

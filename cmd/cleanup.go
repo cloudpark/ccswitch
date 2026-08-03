@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +9,7 @@ import (
 	"github.com/ksred/ccswitch/internal/git"
 	"github.com/ksred/ccswitch/internal/session"
 	"github.com/ksred/ccswitch/internal/ui"
+	"github.com/ksred/ccswitch/internal/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -82,12 +82,11 @@ func cleanupSession(cmd *cobra.Command, args []string) {
 		fmt.Println()
 		fmt.Print("Enter number (or q to quit): ")
 
-		scanner := bufio.NewScanner(os.Stdin)
-		if !scanner.Scan() {
+		input, ok := utils.ReadStdinLine()
+		if !ok {
 			return
 		}
 
-		input := strings.TrimSpace(scanner.Text())
 		if input == "q" || input == "" {
 			return
 		}
@@ -119,11 +118,8 @@ func cleanupSession(cmd *cobra.Command, args []string) {
 
 	// Ask about branch deletion
 	fmt.Printf("Delete branch %s? (y/N): ", targetSession.Branch)
-	scanner := bufio.NewScanner(os.Stdin)
-	deleteBranch := false
-	if scanner.Scan() && strings.ToLower(scanner.Text()) == "y" {
-		deleteBranch = true
-	}
+	answer, ok := utils.ReadStdinLine()
+	deleteBranch := ok && strings.ToLower(answer) == "y"
 
 	// Remove the session
 	if err := manager.RemoveSession(targetSession.Path, deleteBranch, targetSession.Branch); err != nil {
@@ -159,16 +155,13 @@ func cleanupAllSessions(manager *session.Manager, sessions []git.SessionInfo) {
 
 	// Confirm deletion
 	fmt.Print("Press Enter to continue or Ctrl+C to cancel...")
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Scan()
+	utils.ReadStdinLine()
 
 	// Ask about branch deletion
 	fmt.Println()
 	fmt.Print("Delete associated branches as well? (y/N): ")
-	deleteBranches := false
-	if scanner.Scan() && strings.ToLower(scanner.Text()) == "y" {
-		deleteBranches = true
-	}
+	answer, ok := utils.ReadStdinLine()
+	deleteBranches := ok && strings.ToLower(answer) == "y"
 
 	fmt.Println()
 

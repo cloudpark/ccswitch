@@ -71,6 +71,58 @@ func TestLoadRepoConfig_EmptyCommandsList(t *testing.T) {
 	}
 }
 
+func TestLoadRepoConfig_PostRemove(t *testing.T) {
+	tempDir := t.TempDir()
+
+	content := "post_remove:\n  commands:\n    - echo cleanup one\n    - echo cleanup two\n"
+	if err := os.WriteFile(GetRepoConfigPath(tempDir), []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	cfg, err := LoadRepoConfig(tempDir)
+	if err != nil {
+		t.Fatalf("LoadRepoConfig() failed: %v", err)
+	}
+
+	expected := []string{"echo cleanup one", "echo cleanup two"}
+	if len(cfg.PostRemove.Commands) != len(expected) {
+		t.Fatalf("expected %d commands, got %d", len(expected), len(cfg.PostRemove.Commands))
+	}
+	for i, c := range expected {
+		if cfg.PostRemove.Commands[i] != c {
+			t.Errorf("Commands[%d] = %q, expected %q", i, cfg.PostRemove.Commands[i], c)
+		}
+	}
+}
+
+func TestLoadRepoConfig_EmptyPostRemove(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{"no post_remove section", ""},
+		{"empty post_remove section", "post_remove: {}\n"},
+		{"explicit empty commands list", "post_remove:\n  commands: []\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			if err := os.WriteFile(GetRepoConfigPath(tempDir), []byte(tt.content), 0644); err != nil {
+				t.Fatalf("failed to write test config: %v", err)
+			}
+
+			cfg, err := LoadRepoConfig(tempDir)
+			if err != nil {
+				t.Fatalf("LoadRepoConfig() failed: %v", err)
+			}
+			if len(cfg.PostRemove.Commands) != 0 {
+				t.Errorf("expected no commands, got %v", cfg.PostRemove.Commands)
+			}
+		})
+	}
+}
+
 func TestLoadRepoConfig_LinkShared(t *testing.T) {
 	tempDir := t.TempDir()
 
@@ -175,6 +227,9 @@ func TestScaffold_CreatesFile(t *testing.T) {
 	if len(cfg.LinkShared) != 0 {
 		t.Errorf("expected no link_shared entries from scaffolded template, got %v", cfg.LinkShared)
 	}
+	if len(cfg.PostRemove.Commands) != 0 {
+		t.Errorf("expected no post_remove commands from scaffolded template, got %v", cfg.PostRemove.Commands)
+	}
 }
 
 func TestScaffold_DoesNotOverwrite(t *testing.T) {
@@ -208,6 +263,7 @@ func TestSave(t *testing.T) {
 
 	cfg := &RepoConfig{}
 	cfg.PostCreate.Commands = []string{"npm install", "./setup.sh"}
+	cfg.PostRemove.Commands = []string{"./teardown.sh"}
 	cfg.LinkShared = []string{"venv", ".env"}
 
 	if err := cfg.Save(tempDir); err != nil {
@@ -224,6 +280,10 @@ func TestSave(t *testing.T) {
 	}
 	if loaded.PostCreate.Commands[0] != "npm install" || loaded.PostCreate.Commands[1] != "./setup.sh" {
 		t.Errorf("loaded commands = %v, expected %v", loaded.PostCreate.Commands, cfg.PostCreate.Commands)
+	}
+
+	if len(loaded.PostRemove.Commands) != 1 || loaded.PostRemove.Commands[0] != "./teardown.sh" {
+		t.Errorf("loaded PostRemove.Commands = %v, expected %v", loaded.PostRemove.Commands, cfg.PostRemove.Commands)
 	}
 
 	if len(loaded.LinkShared) != 2 {

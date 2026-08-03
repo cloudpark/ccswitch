@@ -113,7 +113,7 @@ func newConfigRepoCmd() *cobra.Command {
 
 	repoCmd.AddCommand(&cobra.Command{
 		Use:   "trust",
-		Short: "Trust this repo's .ccswitch.yaml so post-create commands run without prompting",
+		Short: "Trust this repo's .ccswitch.yaml so post-create/post-remove commands run without prompting",
 		Run:   trustRepoConfig,
 	})
 
@@ -158,14 +158,23 @@ func showRepoConfig(cmd *cobra.Command, args []string) {
 	fmt.Println()
 
 	hasCommands := len(cfg.PostCreate.Commands) > 0
+	hasRemoveCommands := len(cfg.PostRemove.Commands) > 0
 	hasLinkShared := len(cfg.LinkShared) > 0
 
-	if !hasCommands && !hasLinkShared {
+	if !hasCommands && !hasRemoveCommands && !hasLinkShared {
 		ui.Info("Nothing configured.")
 	} else {
 		if hasCommands {
 			ui.Success("Post-create commands:")
 			for i, c := range cfg.PostCreate.Commands {
+				ui.Infof("  %d. %s", i+1, c)
+			}
+			fmt.Println()
+		}
+
+		if hasRemoveCommands {
+			ui.Success("Post-remove commands:")
+			for i, c := range cfg.PostRemove.Commands {
 				ui.Infof("  %d. %s", i+1, c)
 			}
 			fmt.Println()
@@ -230,7 +239,7 @@ func initRepoConfig(cmd *cobra.Command, args []string) {
 
 	ui.Successf("✓ Created repo config at: %s", path)
 	fmt.Println()
-	fmt.Println("Edit this file to add post-create commands or shared paths to link, then commit it so your team shares the same setup.")
+	fmt.Println("Edit this file to add post-create/post-remove commands or shared paths to link, then commit it so your team shares the same setup.")
 }
 
 func trustRepoConfig(cmd *cobra.Command, args []string) {
@@ -273,8 +282,15 @@ func trustRepoConfig(cmd *cobra.Command, args []string) {
 	ui.Successf("✓ Trusted %s", path)
 	if len(cfg.PostCreate.Commands) > 0 {
 		fmt.Println()
-		ui.Info("These commands will now run without prompting:")
+		ui.Info("These post-create commands will now run without prompting:")
 		for i, c := range cfg.PostCreate.Commands {
+			ui.Infof("  %d. %s", i+1, c)
+		}
+	}
+	if len(cfg.PostRemove.Commands) > 0 {
+		fmt.Println()
+		ui.Info("These post-remove commands will now run without prompting:")
+		for i, c := range cfg.PostRemove.Commands {
 			ui.Infof("  %d. %s", i+1, c)
 		}
 	}

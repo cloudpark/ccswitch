@@ -14,11 +14,17 @@ import (
 // RepoConfig represents the contents of .ccswitch.yaml.
 type RepoConfig struct {
 	PostCreate PostCreateConfig `yaml:"post_create"`
+	PostRemove PostRemoveConfig `yaml:"post_remove"`
 	LinkShared []string         `yaml:"link_shared"`
 }
 
 // PostCreateConfig holds the commands run after a worktree is created.
 type PostCreateConfig struct {
+	Commands []string `yaml:"commands"`
+}
+
+// PostRemoveConfig holds the commands run before a worktree is removed.
+type PostRemoveConfig struct {
 	Commands []string `yaml:"commands"`
 }
 
@@ -92,14 +98,22 @@ const defaultRepoConfigTemplate = `# ccswitch repo-level configuration.
 # "ccswitch create" or "ccswitch checkout <branch>" creates a new worktree.
 # Use this to set env vars, seed a database, install deps, etc.
 #
-# - Each entry is run as its own shell command via "sh -c".
-# - Commands run with cwd set to the NEW worktree (not the main repo), so
-#   relative paths/scripts resolve against the worktree.
+# post_remove.commands run automatically, in order, right before
+# "ccswitch cleanup" removes a worktree. Use this to tear down whatever
+# post_create set up - e.g. drop a per-worktree dev database, stop a docker
+# container, deregister a dev subdomain.
+#
+# - Each entry (post_create or post_remove) is run as its own shell command
+#   via "sh -c".
+# - Commands run with cwd set to the worktree (not the main repo), so
+#   relative paths/scripts resolve against the worktree. For post_remove,
+#   this is the worktree about to be removed - it still exists while the
+#   commands run, and is only removed afterward.
 # - Commands run with stdin closed (non-interactive) and stdout/stderr
 #   streamed live to your terminal.
 # - If a command exits non-zero, ccswitch prints a warning and stops running
-#   the remaining commands -- it does NOT fail session creation; the worktree
-#   and branch that git already created are left intact.
+#   the remaining commands -- it does NOT fail session creation/removal; the
+#   worktree and branch are left as they were.
 #
 # link_shared is a list of relative paths (files or directories) that should
 # be symlinked from the MAIN repo's checkout into every new worktree - e.g.
@@ -116,15 +130,17 @@ const defaultRepoConfigTemplate = `# ccswitch repo-level configuration.
 #   "..").
 #
 # This file is always read from the MAIN repo's checkout, not from the
-# branch being checked out into the new worktree.
+# branch being checked out into (or removed from) the new worktree.
 #
 # The first time (or after this file changes) ccswitch runs post_create
-# commands or creates link_shared symlinks for you, it will ask you to
-# confirm. Run "ccswitch config repo trust" to approve without being
-# prompted, or "ccswitch config repo untrust" to revoke approval.
+# commands, post_remove commands, or creates link_shared symlinks for you, it
+# will ask you to confirm. Run "ccswitch config repo trust" to approve
+# without being prompted, or "ccswitch config repo untrust" to revoke
+# approval. Trust is all-or-nothing per file: it covers post_create,
+# post_remove, and link_shared together.
 #
-# Available environment variables inside each post_create command:
-#   CCSWITCH_WORKTREE_PATH  - absolute path to the new worktree
+# Available environment variables inside each post_create/post_remove command:
+#   CCSWITCH_WORKTREE_PATH  - absolute path to the worktree
 #   CCSWITCH_BRANCH_NAME    - branch checked out in the worktree
 #   CCSWITCH_SESSION_NAME   - slugified session name
 #   CCSWITCH_REPO_NAME      - name of the main repository
@@ -141,4 +157,8 @@ const defaultRepoConfigTemplate = `# ccswitch repo-level configuration.
 #     - cp "$CCSWITCH_REPO_PATH/.env.example" .env
 #     - npm install
 #     - ./scripts/seed-db.sh
+#
+# post_remove:
+#   commands:
+#     - ./scripts/drop-db.sh
 `

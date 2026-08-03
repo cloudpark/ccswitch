@@ -173,6 +173,15 @@ func (m *Manager) ListSessions() ([]git.SessionInfo, error) {
 
 // RemoveSession removes a session and optionally its branch
 func (m *Manager) RemoveSession(sessionPath string, deleteBranch bool, branchName string) error {
+	// Post-remove hooks run first, while sessionPath still exists, so cleanup
+	// commands can reference files inside the worktree being torn down.
+	mainRepoPath, err := git.GetMainRepoPath(m.repoPath)
+	if err != nil {
+		mainRepoPath = m.repoPath
+	}
+	sessionName := filepath.Base(sessionPath)
+	m.runPostRemove(mainRepoPath, sessionPath, branchName, sessionName)
+
 	// Remove worktree
 	if err := m.worktreeManager.Remove(sessionPath); err != nil {
 		return fmt.Errorf("failed to remove worktree: %w", err)
@@ -266,6 +275,62 @@ func (m *Manager) runPostCreateAndLinkShared(mainRepoPath, worktreePath, branchN
 	}
 }
 
+// runPostRemove loads the repo-level .ccswitch.yaml from mainRepoPath and, if
+// trusted, runs any configured post_remove.commands with cwd set to
+// sessionPath. It must be called before the worktree at sessionPath is
+// removed, since that's what gives the commands a cwd to run in. Like
+// runPostCreateAndLinkShared, this is always best-effort: a missing config
+// file or no post_remove commands is a silent no-op, and a malformed config
+// file or a failing command only prints a warning - it never blocks
+// RemoveSession from removing the worktree/branch.
+func (m *Manager) runPostRemove(mainRepoPath, sessionPath, branchName, sessionName string) {
+	repoCfg, err := repoconfig.LoadRepoConfig(mainRepoPath)
+	if err != nil {
+		ui.Warningf("⚠ Failed to load %s, skipping post-remove hooks: %v", repoconfig.GetRepoConfigPath(mainRepoPath), err)
+		return
+	}
+	if len(repoCfg.PostRemove.Commands) == 0 {
+		return
+	}
+
+	configPath := repoconfig.GetRepoConfigPath(mainRepoPath)
+	hash, err := trust.HashFile(configPath)
+	if err != nil {
+		ui.Warningf("⚠ Failed to read %s, skipping post-remove hooks: %v", configPath, err)
+		return
+	}
+
+	store, err := trust.Load()
+	if err != nil {
+		ui.Warningf("⚠ Failed to load trust store, skipping post-remove hooks: %v", err)
+		return
+	}
+
+	if !store.IsTrusted(configPath, hash) {
+		if !m.promptTrust(configPath, repoCfg.PostRemove.Commands, nil) {
+			ui.Info("Skipped post-remove commands (not trusted). Run 'ccswitch config repo trust' to approve them.")
+			return
+		}
+		store.Trust(configPath, hash)
+		if err := store.Save(); err != nil {
+			ui.Warningf("⚠ Failed to save trust decision: %v", err)
+		}
+	}
+
+	outcome := hooks.RunPostRemove(repoCfg.PostRemove.Commands, sessionPath, hooks.Env{
+		WorktreePath: sessionPath,
+		BranchName:   branchName,
+		SessionName:  sessionName,
+		RepoName:     m.repoName,
+		RepoPath:     mainRepoPath,
+	})
+	if outcome.Failed() {
+		ui.Warningf("⚠ post-remove command failed, stopping remaining commands: %s", outcome.FailedCmd)
+		ui.Infof("  %v", outcome.Err)
+		ui.Infof("  Ran %d/%d configured post-remove command(s).", outcome.Ran, outcome.Total)
+	}
+}
+
 // promptTrust asks the user to approve running the given commands and/or
 // creating the given shared-path symlinks, reading a y/N answer from stdin
 // via utils.ReadStdinLine (shared with any earlier stdin prompt in this
@@ -288,7 +353,11 @@ func (m *Manager) promptTrust(configPath string, commands, linkShared []string) 
 			ui.Infof("  %s", p)
 		}
 	}
-	fmt.Print("Trust and run/link these? [y/N] ")
+	if len(linkShared) > 0 {
+		fmt.Print("Trust and run/link these? [y/N] ")
+	} else {
+		fmt.Print("Trust and run these? [y/N] ")
+	}
 
 	answer, ok := utils.ReadStdinLine()
 	if !ok {
