@@ -13,8 +13,9 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-REPO_OWNER="ksred"
-REPO_NAME="ccswitch"
+# Override REPO_OWNER/REPO_NAME to install from a fork.
+REPO_OWNER="${CCSWITCH_REPO_OWNER:-cloudpark}"
+REPO_NAME="${CCSWITCH_REPO_NAME:-ccswitch}"
 BINARY_NAME="ccswitch"
 INSTALL_DIR="/usr/local/bin"
 USER_INSTALL_DIR="$HOME/.local/bin"
@@ -349,7 +350,11 @@ setup_shell_integration() {
     
     local shell_config
     local shell_name
-    
+    local integration_line
+    # Written verbatim: the command substitution must run when the shell starts,
+    # not now, so \$( stays literal rather than expanding at install time.
+    integration_line="eval \"\$(${BINARY_NAME} shell-init)\""
+
     # Detect shell
     if [ -n "${ZSH_VERSION:-}" ] || [ "$SHELL" = "/bin/zsh" ] || [ "$SHELL" = "/usr/bin/zsh" ]; then
         shell_config="$HOME/.zshrc"
@@ -360,12 +365,12 @@ setup_shell_integration() {
     else
         print_warning "Could not detect shell type. Manual setup required."
         print_info "Add this to your shell configuration file:"
-        echo "  eval \"\$$($BINARY_NAME shell-init)\""
+        echo "  $integration_line"
         return 0
     fi
-    
+
     # Check if already configured
-    if [ -f "$shell_config" ] && grep -q "eval \"\$$($BINARY_NAME shell-init)\"" "$shell_config" 2>/dev/null; then
+    if [ -f "$shell_config" ] && grep -Fq "$integration_line" "$shell_config" 2>/dev/null; then
         print_success "Shell integration already configured in $shell_config"
         return 0
     fi
@@ -373,7 +378,7 @@ setup_shell_integration() {
     # Add shell integration
     echo "" >> "$shell_config"
     echo "# ccswitch shell integration" >> "$shell_config"
-    echo "eval \"\$$($BINARY_NAME shell-init)\"" >> "$shell_config"
+    echo "$integration_line" >> "$shell_config"
     
     print_success "Shell integration added to $shell_config"
     print_info "To activate now, run: source $shell_config"

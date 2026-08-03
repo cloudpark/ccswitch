@@ -56,60 +56,22 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Version: $VERSION"
     
-    - name: Create GoReleaser config
-      run: |
-        cat > .goreleaser.yaml << 'EOF'
-        project_name: ccswitch
-        builds:
-        - id: ccswitch
-          binary: ccswitch
-          goos:
-            - linux
-            - darwin
-            - windows
-          goarch:
-            - amd64
-            - arm64
-          ldflags:
-            - -X github.com/ksred/ccswitch/internal/version.Version={{.Version}}
-            - -X github.com/ksred/ccswitch/internal/version.Commit={{.Commit}}
-            - -X github.com/ksred/ccswitch/internal/version.BuildTime={{.Date}}
-          env:
-            - CGO_ENABLED=0
-        archives:
-        - id: ccswitch
-          name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
-          format: tar.gz
-          format_overrides:
-            - goos: windows
-              format: zip
-        checksum:
-          name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
-        dockers:
-        - skip_push: auto
-        release:
-          mode: replace
-          header: |
-            ## ccswitch {{ .Version }}
-
-            A friendly CLI tool for managing multiple git worktrees.
-
-            ### Installation
-
-            You can install ccswitch using the install script:
-
-            ```bash
-            curl -sSL https://raw.githubusercontent.com/ksred/ccswitch/main/install.sh | bash
-            ```
-
-            Or download the binary for your platform from the assets below.
-        EOF
+    # Uses the committed .goreleaser.yml. An earlier version of this workflow
+    # generated its own config here, which silently drifted from the committed
+    # one; keep the release config in a single place.
+    - name: Validate GoReleaser config
+      uses: goreleaser/goreleaser-action@v6
+      with:
+        version: '~> v2'
+        args: check
 
     - name: Run GoReleaser
-      uses: goreleaser/goreleaser-action@v5
+      uses: goreleaser/goreleaser-action@v6
       with:
-        version: latest
-        args: release --clean --skip-validate --skip=docker
+        version: '~> v2'
+        # --skip=validate (not the removed --skip-validate) so workflow_dispatch
+        # can release a tag that is not the checked-out ref.
+        args: release --clean --skip=validate --skip=docker
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GORELEASER_CURRENT_TAG: ${{ steps.version.outputs.version }}

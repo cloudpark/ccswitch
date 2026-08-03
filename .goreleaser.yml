@@ -1,3 +1,5 @@
+version: 2
+
 project_name: ccswitch
 
 builds:
@@ -10,6 +12,9 @@ builds:
     goarch:
       - amd64
       - arm64
+    # These paths are the Go module path from go.mod, not the release host.
+    # -X against a symbol that does not exist is ignored silently, which would
+    # make every published binary report its version as "dev".
     ldflags:
       - -X github.com/ksred/ccswitch/internal/version.Version={{.Version}}
       - -X github.com/ksred/ccswitch/internal/version.Commit={{.Commit}}
@@ -18,12 +23,15 @@ builds:
       - CGO_ENABLED=0
 
 archives:
+  # install.sh downloads ccswitch-<goos>-<goarch>.tar.gz and expects a bare
+  # `ccswitch` binary at the archive root, so do not wrap it in a directory.
   - id: ccswitch
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
-    format: tar.gz
+    formats: [tar.gz]
+    wrap_in_directory: false
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
 
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
@@ -40,14 +48,10 @@ release:
     You can install ccswitch using the install script:
     
     ```bash
-    curl -sSL https://raw.githubusercontent.com/ksred/ccswitch/main/install.sh | bash
+    curl -sSL https://raw.githubusercontent.com/cloudpark/ccswitch/main/install.sh | bash
     ```
     
     Or download the binary for your platform from the assets below.
-    
-    ### What's Changed
-    
-    See the [changelog](https://github.com/ksred/ccswitch/blob/main/CHANGELOG.md) for details.
 
 changelog:
   sort: asc
@@ -60,18 +64,18 @@ changelog:
       - '^chore:'
 
 snapshot:
-  name_template: "{{ .Tag }}-next"
+  version_template: "{{ .Tag }}-next"
 
 dockers:
   - image_templates:
-      - "ghcr.io/ksred/ccswitch:{{ .Version }}"
-      - "ghcr.io/ksred/ccswitch:latest"
+      - "ghcr.io/cloudpark/ccswitch:{{ .Version }}"
+      - "ghcr.io/cloudpark/ccswitch:latest"
     dockerfile: Dockerfile
     build_flag_templates:
       - --label=org.opencontainers.image.title=ccswitch
       - --label=org.opencontainers.image.description=A friendly CLI tool for managing multiple git worktrees
-      - --label=org.opencontainers.image.url=https://github.com/ksred/ccswitch
-      - --label=org.opencontainers.image.source=https://github.com/ksred/ccswitch
+      - --label=org.opencontainers.image.url=https://github.com/cloudpark/ccswitch
+      - --label=org.opencontainers.image.source=https://github.com/cloudpark/ccswitch
       - --label=org.opencontainers.image.version={{ .Version }}
       - --label=org.opencontainers.image.created={{ .Date }}
       - --label=org.opencontainers.image.revision={{ .FullCommit }}

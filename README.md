@@ -20,10 +20,73 @@ A friendly CLI tool for managing multiple git worktrees, perfect for juggling di
 
 ## 📦 Installation
 
+### Quick install (macOS & Linux)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/cloudpark/ccswitch/main/install.sh | bash
+```
+
+This downloads a prebuilt binary for your platform, installs it to `/usr/local/bin`
+(prompting for `sudo` if needed), and appends the shell integration to your
+`~/.zshrc` or `~/.bashrc`. Restart your shell or `source` that file afterwards.
+
+**Prebuilt binaries:**
+
+| Platform | Architectures | Notes |
+|----------|---------------|-------|
+| macOS | `amd64` (Intel), `arm64` (Apple Silicon) | |
+| Linux | `amd64` (x86_64), `arm64` (aarch64) | Ubuntu, Debian, Fedora, Arch, Alpine, … |
+
+Linux builds are statically linked with `CGO_ENABLED=0`, so they carry no glibc
+or musl dependency and run on any distribution. `git` 2.20+ is the only runtime
+requirement. If no prebuilt binary matches your platform, the script falls back
+to building from source, which needs [Go](https://golang.org/dl/) installed.
+
+#### Install options
+
+Because the script is piped into `bash`, flags go after `-s --`:
+
+```bash
+# Install to ~/.local/bin instead of /usr/local/bin (no sudo needed)
+curl -sSL https://raw.githubusercontent.com/cloudpark/ccswitch/main/install.sh | bash -s -- --location user
+
+# Pin a specific version
+curl -sSL https://raw.githubusercontent.com/cloudpark/ccswitch/main/install.sh | bash -s -- --version v1.1.2
+
+# Reinstall over an existing copy, and skip touching your shell config
+curl -sSL https://raw.githubusercontent.com/cloudpark/ccswitch/main/install.sh | bash -s -- --force --skip-shell
+```
+
+Run with `--help` to see every option. To review the script before running it
+(recommended for any piped installer), download it first:
+
+```bash
+curl -sSLO https://raw.githubusercontent.com/cloudpark/ccswitch/main/install.sh
+less install.sh
+bash install.sh
+```
+
+### Manual download
+
+Grab a tarball from the [releases page](https://github.com/cloudpark/ccswitch/releases),
+then:
+
+```bash
+tar -xzf ccswitch-darwin-arm64.tar.gz   # or ccswitch-linux-amd64.tar.gz, etc.
+sudo mv ccswitch /usr/local/bin/
+echo 'eval "$(ccswitch shell-init)"' >> ~/.zshrc   # or ~/.bashrc
+source ~/.zshrc
+```
+
+Each release also ships a `ccswitch_<version>_checksums.txt` you can verify with
+`shasum -a 256 -c`. The binaries are unsigned; macOS only quarantines browser
+downloads, so if you fetched the tarball in a browser rather than with `curl`,
+clear the flag with `xattr -d com.apple.quarantine ccswitch`.
+
 ### Using Make
 ```bash
 # Clone the repo
-git clone https://github.com/ksred/ccswitch.git
+git clone https://github.com/cloudpark/ccswitch.git
 cd ccswitch
 
 # Build and install
@@ -177,6 +240,33 @@ make test-docker
 
 # Generate coverage report
 make coverage
+```
+
+### Releasing (maintainers)
+
+Releases are built by [GoReleaser](https://goreleaser.com) via
+`.github/workflows/release.yml`, which triggers on any `v*` tag and publishes
+macOS and Linux tarballs (`amd64` + `arm64`) plus a checksums file:
+
+```bash
+git tag -a v1.2.0 -m "Release v1.2.0"
+git push origin v1.2.0
+```
+
+The release config lives in `.goreleaser.yml`. Two constraints to preserve:
+
+- Assets must stay named `ccswitch-<goos>-<goarch>.tar.gz` with the `ccswitch`
+  binary at the archive root — that is the contract `install.sh` downloads against.
+- The `ldflags` in `.goreleaser.yml` reference the `github.com/ksred/ccswitch`
+  **module path** from `go.mod`, not the repository host. A `-X` flag naming a
+  symbol that does not exist is ignored silently, so changing them would make
+  every published binary report its version as `dev`.
+
+Validate config changes locally without publishing anything:
+
+```bash
+goreleaser check
+goreleaser release --snapshot --clean --skip=docker,publish
 ```
 
 ### Project Structure

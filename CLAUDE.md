@@ -1,6 +1,6 @@
 # ccswitch
 
-This is a **public, open-source project** (hosted on GitHub: ksred/ccswitch). Treat everything in this repo as visible to the public.
+This is a **public, open-source project**, hosted at the public repo cloudpark/ccswitch — a fork of the upstream project ksred/ccswitch. Releases and `install.sh` point at cloudpark/ccswitch; the Go module path stays `github.com/ksred/ccswitch`. Treat everything in this repo as visible to the public.
 
 ## Critical rule: no internal/private content
 

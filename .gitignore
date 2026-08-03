@@ -3,3 +3,4 @@ ccswitch
 coverage.html
 coverage.out
 .claude/
+dist/
